@@ -13,8 +13,8 @@ if [[ $EUID -eq 0 ]]; then
    exit 1
 fi
 
-# Create directory
-INSTALL_DIR="/home/pi/rotator"
+# Create directory (use current user's home)
+INSTALL_DIR="$HOME/rotator"
 echo "Creating installation directory: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 
@@ -26,13 +26,19 @@ chmod +x "$INSTALL_DIR/rotator.py"
 
 # Install systemd service
 echo "Installing systemd service..."
-sudo cp rotator.service /etc/systemd/system/
+# Create service file with current user and path
+sed -e "s|USER_PLACEHOLDER|$CURRENT_USER|g" \
+    -e "s|INSTALL_DIR_PLACEHOLDER|$INSTALL_DIR|g" \
+    rotator.service > /tmp/rotator.service
+sudo cp /tmp/rotator.service /etc/systemd/system/
+rm /tmp/rotator.service
 sudo systemctl daemon-reload
 
 # Add user to sudoers for network commands (if not already there)
-echo "Configuring sudo permissions for network commands..."
-if ! sudo grep -q "pi.*NOPASSWD.*ip\|nmcli\|dhclient\|killall" /etc/sudoers; then
-    echo "pi ALL=(ALL) NOPASSWD: /sbin/ip, /usr/bin/nmcli, /sbin/dhclient, /usr/bin/killall" | sudo tee -a /etc/sudoers
+CURRENT_USER=$(whoami)
+echo "Configuring sudo permissions for network commands for user: $CURRENT_USER"
+if ! sudo grep -q "$CURRENT_USER.*NOPASSWD.*ip\|nmcli\|dhclient\|killall" /etc/sudoers; then
+    echo "$CURRENT_USER ALL=(ALL) NOPASSWD: /sbin/ip, /usr/bin/nmcli, /sbin/dhclient, /usr/bin/killall" | sudo tee -a /etc/sudoers
 fi
 
 # Enable and start service
