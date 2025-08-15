@@ -98,174 +98,51 @@ class ModemRotator:
             return {"error": str(e)}
     
     def disconnect_modem(self) -> bool:
-        """Disconnect the modem using multiple methods for better IP rotation"""
+        """Disconnect the modem - simple and direct"""
         try:
-            logger.info("Disconnecting modem...")
-            disconnected = False
+            logger.info(f"Disconnecting {CONFIG['interface']}...")
             
-            # Method 1: ModemManager disconnect (most reliable for cellular)
-            if CONFIG["interface"].startswith('wwan'):
-                try:
-                    # First try to disconnect via ModemManager
-                    result = subprocess.run(
-                        ['mmcli', '--modem=0', '--simple-disconnect'], 
-                        capture_output=True, text=True, timeout=15
-                    )
-                    if result.returncode == 0:
-                        logger.info("Disconnected using ModemManager")
-                        disconnected = True
-                    else:
-                        # Try to disable the modem entirely
-                        result = subprocess.run(
-                            ['mmcli', '--modem=0', '--disable'], 
-                            capture_output=True, text=True, timeout=15
-                        )
-                        if result.returncode == 0:
-                            logger.info("Disabled modem using ModemManager")
-                            disconnected = True
-                except FileNotFoundError:
-                    logger.info("ModemManager not available")
-                except Exception as e:
-                    logger.info(f"ModemManager disconnect failed: {e}")
-            
-            # Method 2: NetworkManager disconnect
-            if not disconnected:
-                try:
-                    result = subprocess.run(
-                        ['nmcli', 'device', 'disconnect', CONFIG["interface"]], 
-                        capture_output=True, text=True, timeout=15
-                    )
-                    if result.returncode == 0:
-                        logger.info("Disconnected using NetworkManager")
-                        disconnected = True
-                except FileNotFoundError:
-                    pass
-                except Exception as e:
-                    logger.info(f"NetworkManager disconnect failed: {e}")
-            
-            # Method 3: Physical interface down
-            if not disconnected:
-                result = subprocess.run(
-                    ['sudo', 'ip', 'link', 'set', CONFIG["interface"], 'down'], 
-                    capture_output=True, text=True, timeout=10
-                )
-                if result.returncode == 0:
-                    logger.info("Interface brought down")
-                    disconnected = True
-            
-            # Method 4: Kill related processes for more aggressive disconnect
-            if disconnected:
-                try:
-                    subprocess.run(['sudo', 'killall', 'wvdial'], capture_output=True, timeout=5)
-                    subprocess.run(['sudo', 'killall', 'pppd'], capture_output=True, timeout=5)
-                    logger.info("Killed dial-up processes for clean disconnect")
-                except:
-                    pass
-            
-            if not disconnected:
-                logger.warning("Could not disconnect modem using any method")
+            # Just use nmcli - it's that simple
+            result = subprocess.run(
+                ['nmcli', 'device', 'disconnect', CONFIG["interface"]], 
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                logger.info("Disconnected successfully")
+                return True
+            else:
+                logger.error(f"nmcli disconnect failed: {result.stderr}")
                 return False
                 
-            return True
-            
+        except FileNotFoundError:
+            logger.error("NetworkManager (nmcli) not found")
+            return False
         except Exception as e:
-            logger.error(f"Error disconnecting modem: {e}")
+            logger.error(f"Error disconnecting: {e}")
             return False
     
     def connect_modem(self) -> bool:
-        """Connect the modem"""
+        """Connect the modem - simple and direct"""
         try:
-            logger.info("Connecting modem...")
+            logger.info(f"Connecting {CONFIG['interface']}...")
             
-            # Method 1: ModemManager enable/connect (for cellular)
-            if CONFIG["interface"].startswith('wwan'):
-                try:
-                    # Enable modem first
-                    result = subprocess.run(
-                        ['mmcli', '--modem=0', '--enable'], 
-                        capture_output=True, text=True, timeout=20
-                    )
-                    if result.returncode == 0:
-                        logger.info("Enabled modem using ModemManager")
-                        time.sleep(3)  # Wait for modem to initialize
-                    
-                    # Connect modem
-                    result = subprocess.run(
-                        ['mmcli', '--modem=0', '--simple-connect'], 
-                        capture_output=True, text=True, timeout=30
-                    )
-                    if result.returncode == 0:
-                        logger.info("Connected using ModemManager")
-                        return True
-                except FileNotFoundError:
-                    logger.info("ModemManager not available")
-                except Exception as e:
-                    logger.info(f"ModemManager connect failed: {e}")
-            
-            # Method 2: Use NetworkManager if available
-            try:
-                result = subprocess.run(
-                    ['nmcli', 'device', 'connect', CONFIG["interface"]], 
-                    capture_output=True, text=True, timeout=30
-                )
-                if result.returncode == 0:
-                    logger.info("Connected using NetworkManager")
-                    return True
-            except FileNotFoundError:
-                pass
-            
-            # Method 2: Bring interface up
+            # Just use nmcli - it's that simple
             result = subprocess.run(
-                ['sudo', 'ip', 'link', 'set', CONFIG["interface"], 'up'], 
-                capture_output=True, text=True, timeout=10
+                ['nmcli', 'device', 'connect', CONFIG["interface"]], 
+                capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
-                logger.info("Interface brought up")
-                
-                # Handle different interface types
-                if CONFIG["interface"].startswith('wwan'):
-                    # Cellular modems: wait for automatic connection
-                    logger.info("Waiting for cellular modem auto-connection...")
-                    time.sleep(8)  # Give cellular modems more time
-                    
-                    # Try ModemManager if available
-                    try:
-                        result = subprocess.run(
-                            ['mmcli', '--modem=0', '--simple-connect'], 
-                            capture_output=True, text=True, timeout=20
-                        )
-                        if result.returncode == 0:
-                            logger.info("Connected using ModemManager")
-                    except FileNotFoundError:
-                        logger.info("ModemManager not available, relying on auto-connection")
-                    except:
-                        logger.info("ModemManager connection attempt failed")
-                        
-                elif CONFIG["interface"].startswith('ppp'):
-                    # PPP connections: usually managed by pppd/wvdial
-                    logger.info("PPP interface detected, waiting for dial-up connection...")
-                    time.sleep(5)
-                    
-                else:
-                    # Ethernet-like interfaces: try DHCP
-                    logger.info("Attempting DHCP for ethernet-like interface...")
-                    try:
-                        result = subprocess.run(
-                            ['sudo', 'dhclient', CONFIG["interface"]], 
-                            capture_output=True, text=True, timeout=15
-                        )
-                        if result.returncode != 0:
-                            logger.warning(f"DHCP failed for {CONFIG['interface']}")
-                    except Exception as e:
-                        logger.warning(f"DHCP attempt failed: {e}")
-                
+                logger.info("Connected successfully")
                 return True
-            
-            logger.warning("Could not connect modem using standard methods")
+            else:
+                logger.error(f"nmcli connect failed: {result.stderr}")
+                return False
+                
+        except FileNotFoundError:
+            logger.error("NetworkManager (nmcli) not found")
             return False
-            
         except Exception as e:
-            logger.error(f"Error connecting modem: {e}")
+            logger.error(f"Error connecting: {e}")
             return False
     
     def rotate_connection(self) -> Dict[str, Any]:
