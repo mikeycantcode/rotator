@@ -183,7 +183,7 @@ class ModemRotator:
                 logger.info("Waiting for connection to establish...")
                 start_time = time.time()
                 while time.time() - start_time < CONFIG["reconnect_timeout"]:
-                    time.sleep(2)
+                    time.sleep(1)  # Check every 1 second instead of 2
                     status = self.get_connection_status()
                     if status.get("internet_connected"):
                         break

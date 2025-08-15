@@ -1,9 +1,9 @@
 {
     "port": 8080,
     "interface": "wwan0",
-    "disconnect_delay": 5,
-    "reconnect_timeout": 30,
+    "disconnect_delay": 1,
+    "reconnect_timeout": 8,
     "log_level": "INFO",
-    "aggressive_rotation": true,
-    "modem_reset_delay": 10
+    "aggressive_rotation": false,
+    "modem_reset_delay": 1
 }
