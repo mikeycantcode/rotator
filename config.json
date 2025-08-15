@@ -3,5 +3,7 @@
     "interface": "wwan0",
     "disconnect_delay": 5,
     "reconnect_timeout": 30,
-    "log_level": "INFO"
+    "log_level": "INFO",
+    "aggressive_rotation": true,
+    "modem_reset_delay": 10
 }
