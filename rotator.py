@@ -109,7 +109,7 @@ class ModemRotator:
             
             # Turn off modem completely
             result = subprocess.run(
-                ['mmcli', '-m', '0', '--disable'], 
+                ['mmcli', '-m', '1', '--disable'], 
                 capture_output=True, text=True, timeout=20
             )
             if result.returncode == 0:
@@ -133,7 +133,7 @@ class ModemRotator:
             
             # Turn modem back on
             result = subprocess.run(
-                ['mmcli', '-m', '0', '--enable'], 
+                ['mmcli', '-m', '1', '--enable'], 
                 capture_output=True, text=True, timeout=20
             )
             if result.returncode == 0:
@@ -148,7 +148,7 @@ class ModemRotator:
             # Connect modem
             logger.info("Connecting modem...")
             result = subprocess.run(
-                ['mmcli', '-m', '0', '--simple-connect'], 
+                ['mmcli', '-m', '1', '--simple-connect'], 
                 capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
