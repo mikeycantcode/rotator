@@ -17,10 +17,11 @@ import os
 # Configuration
 CONFIG = {
     "port": 8080,
-    "interface": "wwan0",  # Common interface for USB modems
-    "disconnect_delay": 5,  # Seconds to wait before reconnecting
-    "reconnect_timeout": 30,  # Max seconds to wait for reconnection
-    "log_level": "INFO"
+    "interface": "cdc-wdm0",
+    "disconnect_delay": 1,
+    "reconnect_timeout": 8,
+    "log_level": "INFO",
+    "modem_reset_delay": 1
 }
 
 # Load config from file if it exists
