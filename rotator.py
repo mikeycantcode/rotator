@@ -164,15 +164,43 @@ class ModemRotator:
             if result.returncode == 0:
                 logger.info("Interface brought up")
                 
-                # Wait a bit and try to get DHCP
-                time.sleep(2)
-                try:
-                    subprocess.run(
-                        ['sudo', 'dhclient', CONFIG["interface"]], 
-                        capture_output=True, timeout=15
-                    )
-                except:
-                    pass
+                # Handle different interface types
+                if CONFIG["interface"].startswith('wwan'):
+                    # Cellular modems: wait for automatic connection
+                    logger.info("Waiting for cellular modem auto-connection...")
+                    time.sleep(8)  # Give cellular modems more time
+                    
+                    # Try ModemManager if available
+                    try:
+                        result = subprocess.run(
+                            ['mmcli', '--modem=0', '--simple-connect'], 
+                            capture_output=True, text=True, timeout=20
+                        )
+                        if result.returncode == 0:
+                            logger.info("Connected using ModemManager")
+                    except FileNotFoundError:
+                        logger.info("ModemManager not available, relying on auto-connection")
+                    except:
+                        logger.info("ModemManager connection attempt failed")
+                        
+                elif CONFIG["interface"].startswith('ppp'):
+                    # PPP connections: usually managed by pppd/wvdial
+                    logger.info("PPP interface detected, waiting for dial-up connection...")
+                    time.sleep(5)
+                    
+                else:
+                    # Ethernet-like interfaces: try DHCP
+                    logger.info("Attempting DHCP for ethernet-like interface...")
+                    try:
+                        result = subprocess.run(
+                            ['sudo', 'dhclient', CONFIG["interface"]], 
+                            capture_output=True, text=True, timeout=15
+                        )
+                        if result.returncode != 0:
+                            logger.warning(f"DHCP failed for {CONFIG['interface']}")
+                    except Exception as e:
+                        logger.warning(f"DHCP attempt failed: {e}")
+                
                 return True
             
             logger.warning("Could not connect modem using standard methods")
