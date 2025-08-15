@@ -1,6 +1,6 @@
 {
     "port": 8080,
-    "interface": "wwan0",
+    "interface": "cdc-wdm0",
     "disconnect_delay": 1,
     "reconnect_timeout": 8,
     "log_level": "INFO",
