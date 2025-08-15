@@ -103,51 +103,66 @@ class ModemRotator:
             return {"error": str(e)}
     
     def disconnect_modem(self) -> bool:
-        """Disconnect the modem - simple and direct"""
+        """Disable modem completely - airplane mode style"""
         try:
-            logger.info(f"Disconnecting {CONFIG['interface']}...")
+            logger.info("Disabling modem completely (airplane mode style)...")
             
-            # Just use nmcli - it's that simple
+            # Turn off modem completely
             result = subprocess.run(
-                ['nmcli', 'device', 'disconnect', CONFIG["interface"]], 
-                capture_output=True, text=True, timeout=15
+                ['mmcli', '-m', '0', '--disable'], 
+                capture_output=True, text=True, timeout=20
             )
             if result.returncode == 0:
-                logger.info("Disconnected successfully")
+                logger.info("Modem disabled successfully")
                 return True
             else:
-                logger.error(f"nmcli disconnect failed: {result.stderr}")
+                logger.error(f"mmcli disable failed: {result.stderr}")
                 return False
                 
         except FileNotFoundError:
-            logger.error("NetworkManager (nmcli) not found")
+            logger.error("ModemManager (mmcli) not found")
             return False
         except Exception as e:
-            logger.error(f"Error disconnecting: {e}")
+            logger.error(f"Error disabling modem: {e}")
             return False
     
     def connect_modem(self) -> bool:
-        """Connect the modem - simple and direct"""
+        """Enable and connect modem - airplane mode style"""
         try:
-            logger.info(f"Connecting {CONFIG['interface']}...")
+            logger.info("Enabling modem...")
             
-            # Just use nmcli - it's that simple
+            # Turn modem back on
             result = subprocess.run(
-                ['nmcli', 'device', 'connect', CONFIG["interface"]], 
+                ['mmcli', '-m', '0', '--enable'], 
+                capture_output=True, text=True, timeout=20
+            )
+            if result.returncode == 0:
+                logger.info("Modem enabled successfully")
+            else:
+                logger.error(f"mmcli enable failed: {result.stderr}")
+                return False
+            
+            # Wait for modem to initialize
+            time.sleep(3)
+            
+            # Connect modem
+            logger.info("Connecting modem...")
+            result = subprocess.run(
+                ['mmcli', '-m', '0', '--simple-connect'], 
                 capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
-                logger.info("Connected successfully")
+                logger.info("Modem connected successfully")
                 return True
             else:
-                logger.error(f"nmcli connect failed: {result.stderr}")
+                logger.error(f"mmcli connect failed: {result.stderr}")
                 return False
                 
         except FileNotFoundError:
-            logger.error("NetworkManager (nmcli) not found")
+            logger.error("ModemManager (mmcli) not found")
             return False
         except Exception as e:
-            logger.error(f"Error connecting: {e}")
+            logger.error(f"Error enabling/connecting modem: {e}")
             return False
     
     def rotate_connection(self) -> Dict[str, Any]:

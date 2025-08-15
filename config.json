@@ -1,9 +1,9 @@
 {
     "port": 8080,
     "interface": "cdc-wdm0",
-    "disconnect_delay": 1,
-    "reconnect_timeout": 8,
+    "disconnect_delay": 5,
+    "reconnect_timeout": 15,
     "log_level": "INFO",
-    "aggressive_rotation": false,
-    "modem_reset_delay": 1
+    "aggressive_rotation": true,
+    "modem_reset_delay": 5
 }
