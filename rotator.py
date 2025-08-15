@@ -54,9 +54,12 @@ class ModemRotator:
     def get_connection_status(self) -> Dict[str, Any]:
         """Get current connection status"""
         try:
+            # For NetworkManager devices like cdc-wdm0, check the actual network interface (wwan0)
+            network_interface = "wwan0"  # Always check wwan0 for IP status
+            
             # Check if interface is up
             result = subprocess.run(
-                ['ip', 'link', 'show', CONFIG["interface"]], 
+                ['ip', 'link', 'show', network_interface], 
                 capture_output=True, text=True, timeout=10
             )
             interface_up = result.returncode == 0 and 'UP' in result.stdout
@@ -65,7 +68,7 @@ class ModemRotator:
             ip_address = None
             if interface_up:
                 ip_result = subprocess.run(
-                    ['ip', 'addr', 'show', CONFIG["interface"]], 
+                    ['ip', 'addr', 'show', network_interface], 
                     capture_output=True, text=True, timeout=10
                 )
                 if ip_result.returncode == 0:
@@ -87,7 +90,8 @@ class ModemRotator:
                 pass
                 
             return {
-                "interface": CONFIG["interface"],
+                "interface": network_interface,  # Show wwan0 in status
+                "nm_device": CONFIG["interface"],  # Show cdc-wdm0 as the control device
                 "interface_up": interface_up,
                 "ip_address": ip_address,
                 "internet_connected": internet_connected,
