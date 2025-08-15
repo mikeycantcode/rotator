@@ -1,0 +1,21 @@
+[Unit]
+Description=Modem Connection Rotator Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/rotator
+ExecStart=/usr/bin/python3 /home/pi/rotator/rotator.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Allow the service to run networking commands
+SupplementaryGroups=sudo
+
+[Install]
+WantedBy=multi-user.target

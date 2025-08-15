@@ -1,0 +1,7 @@
+{
+    "port": 8080,
+    "interface": "wwan0",
+    "disconnect_delay": 5,
+    "reconnect_timeout": 30,
+    "log_level": "INFO"
+}
