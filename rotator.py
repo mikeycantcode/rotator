@@ -145,14 +145,29 @@ class ModemRotator:
             # Wait for modem to initialize
             time.sleep(3)
             
-            # Connect modem
+            # Connect modem - try NetworkManager first, then simple-connect
             logger.info("Connecting modem...")
+            
+            # Method 1: Use NetworkManager (usually has the connection profile)
+            try:
+                result = subprocess.run(
+                    ['nmcli', 'device', 'connect', CONFIG["interface"]], 
+                    capture_output=True, text=True, timeout=30
+                )
+                if result.returncode == 0:
+                    logger.info("Modem connected via NetworkManager")
+                    return True
+            except:
+                pass
+            
+            # Method 2: Try simple-connect with basic parameters
+            logger.info("Trying mmcli simple-connect...")
             result = subprocess.run(
-                ['mmcli', '-m', '1', '--simple-connect'], 
+                ['mmcli', '-m', '1', '--simple-connect', 'apn=auto'], 
                 capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
-                logger.info("Modem connected successfully")
+                logger.info("Modem connected via mmcli")
                 return True
             else:
                 logger.error(f"mmcli connect failed: {result.stderr}")
