@@ -103,91 +103,55 @@ class ModemRotator:
             return {"error": str(e)}
     
     def disconnect_modem(self) -> bool:
-        """Disable modem completely - airplane mode style"""
+        """Hardware radio block - true airplane mode style"""
         try:
-            logger.info("Disabling modem completely (airplane mode style)...")
+            logger.info("Blocking radio hardware (true airplane mode)...")
             
-            # Turn off modem completely
+            # Block cellular radio at hardware level
             result = subprocess.run(
-                ['mmcli', '-m', '1', '--disable'], 
-                capture_output=True, text=True, timeout=20
+                ['sudo', 'rfkill', 'block', 'wwan'], 
+                capture_output=True, text=True, timeout=10
             )
             if result.returncode == 0:
-                logger.info("Modem disabled successfully")
-                
-                # NUCLEAR OPTION: Destroy the network interface completely
-                logger.info("Destroying network interface...")
-                try:
-                    subprocess.run(['sudo', 'ip', 'link', 'delete', 'wwan0'], 
-                                 capture_output=True, timeout=10)
-                    logger.info("Network interface destroyed")
-                except:
-                    logger.info("Interface destruction failed (might not exist)")
-                
+                logger.info("Cellular radio blocked successfully")
                 return True
             else:
-                logger.error(f"mmcli disable failed: {result.stderr}")
+                logger.error(f"rfkill block failed: {result.stderr}")
                 return False
                 
         except FileNotFoundError:
-            logger.error("ModemManager (mmcli) not found")
+            logger.error("rfkill not found")
             return False
         except Exception as e:
-            logger.error(f"Error disabling modem: {e}")
+            logger.error(f"Error blocking radio: {e}")
             return False
     
     def connect_modem(self) -> bool:
-        """Enable and connect modem - airplane mode style"""
+        """Unblock radio hardware - true airplane mode style"""
         try:
-            logger.info("Enabling modem...")
+            logger.info("Unblocking radio hardware...")
             
-            # Turn modem back on
+            # Unblock cellular radio at hardware level
             result = subprocess.run(
-                ['mmcli', '-m', '1', '--enable'], 
-                capture_output=True, text=True, timeout=20
+                ['sudo', 'rfkill', 'unblock', 'wwan'], 
+                capture_output=True, text=True, timeout=10
             )
             if result.returncode == 0:
-                logger.info("Modem enabled successfully")
-            else:
-                logger.error(f"mmcli enable failed: {result.stderr}")
-                return False
-            
-            # Wait for modem to initialize
-            time.sleep(3)
-            
-            # Connect modem - try NetworkManager first, then simple-connect
-            logger.info("Connecting modem...")
-            
-            # Method 1: Use NetworkManager (usually has the connection profile)
-            try:
-                result = subprocess.run(
-                    ['nmcli', 'device', 'connect', CONFIG["interface"]], 
-                    capture_output=True, text=True, timeout=30
-                )
-                if result.returncode == 0:
-                    logger.info("Modem connected via NetworkManager")
-                    return True
-            except:
-                pass
-            
-            # Method 2: Try simple-connect with basic parameters
-            logger.info("Trying mmcli simple-connect...")
-            result = subprocess.run(
-                ['mmcli', '-m', '1', '--simple-connect', 'apn=auto'], 
-                capture_output=True, text=True, timeout=30
-            )
-            if result.returncode == 0:
-                logger.info("Modem connected via mmcli")
+                logger.info("Cellular radio unblocked successfully")
+                
+                # Wait for hardware to initialize and auto-connect
+                logger.info("Waiting for hardware initialization and auto-connect...")
+                time.sleep(8)
                 return True
             else:
-                logger.error(f"mmcli connect failed: {result.stderr}")
+                logger.error(f"rfkill unblock failed: {result.stderr}")
                 return False
                 
         except FileNotFoundError:
-            logger.error("ModemManager (mmcli) not found")
+            logger.error("rfkill not found")
             return False
         except Exception as e:
-            logger.error(f"Error enabling/connecting modem: {e}")
+            logger.error(f"Error unblocking radio: {e}")
             return False
     
     def rotate_connection(self) -> Dict[str, Any]:
