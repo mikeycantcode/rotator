@@ -103,55 +103,124 @@ class ModemRotator:
             return {"error": str(e)}
     
     def disconnect_modem(self) -> bool:
-        """Hardware radio block - true airplane mode style"""
+        """USB power cycle - nuclear option"""
         try:
-            logger.info("Blocking radio hardware (true airplane mode)...")
+            logger.info("Power cycling USB modem (nuclear option)...")
             
-            # Block cellular radio at hardware level
-            result = subprocess.run(
-                ['sudo', 'rfkill', 'block', 'wwan'], 
-                capture_output=True, text=True, timeout=10
-            )
-            if result.returncode == 0:
-                logger.info("Cellular radio blocked successfully")
-                return True
-            else:
-                logger.error(f"rfkill block failed: {result.stderr}")
+            # Step 1: Find the USB modem device
+            try:
+                result = subprocess.run(
+                    ['lsusb'], capture_output=True, text=True, timeout=10
+                )
+                usb_info = None
+                for line in result.stdout.split('\n'):
+                    if 'SIMCOM' in line or 'SIM7600' in line or 'QUALCOMM' in line:
+                        # Extract bus and device numbers
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            bus = parts[1]
+                            device = parts[3].rstrip(':')
+                            usb_path = f"{bus}-{device}"
+                            usb_info = usb_path
+                            logger.info(f"Found modem at USB path: {usb_path}")
+                            break
+                
+                if not usb_info:
+                    logger.warning("Could not find USB modem, falling back to rfkill")
+                    # Fallback to rfkill
+                    result = subprocess.run(
+                        ['sudo', 'rfkill', 'block', 'wwan'], 
+                        capture_output=True, text=True, timeout=10
+                    )
+                    if result.returncode == 0:
+                        logger.info("Cellular radio blocked via rfkill")
+                        return True
+                    else:
+                        return False
+                
+                # Step 2: Disable USB device
+                usb_device_path = f"/sys/bus/usb/devices/{usb_info}"
+                auth_file = f"{usb_device_path}/authorized"
+                
+                result = subprocess.run(
+                    ['sudo', 'sh', '-c', f'echo 0 > {auth_file}'], 
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0:
+                    logger.info("USB modem powered down successfully")
+                    return True
+                else:
+                    logger.error(f"USB power down failed: {result.stderr}")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"USB detection failed: {e}")
                 return False
                 
-        except FileNotFoundError:
-            logger.error("rfkill not found")
-            return False
         except Exception as e:
-            logger.error(f"Error blocking radio: {e}")
+            logger.error(f"Error power cycling USB: {e}")
             return False
     
     def connect_modem(self) -> bool:
-        """Unblock radio hardware - true airplane mode style"""
+        """Power up USB modem - nuclear option"""
         try:
-            logger.info("Unblocking radio hardware...")
+            logger.info("Powering up USB modem...")
             
-            # Unblock cellular radio at hardware level
-            result = subprocess.run(
-                ['sudo', 'rfkill', 'unblock', 'wwan'], 
-                capture_output=True, text=True, timeout=10
-            )
-            if result.returncode == 0:
-                logger.info("Cellular radio unblocked successfully")
+            # Step 1: Find the USB modem device (same logic as disconnect)
+            try:
+                result = subprocess.run(
+                    ['lsusb'], capture_output=True, text=True, timeout=10
+                )
+                usb_info = None
+                for line in result.stdout.split('\n'):
+                    if 'SIMCOM' in line or 'SIM7600' in line or 'QUALCOMM' in line:
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            bus = parts[1]
+                            device = parts[3].rstrip(':')
+                            usb_path = f"{bus}-{device}"
+                            usb_info = usb_path
+                            break
                 
-                # Wait for hardware to initialize and auto-connect
-                logger.info("Waiting for hardware initialization and auto-connect...")
-                time.sleep(8)
-                return True
-            else:
-                logger.error(f"rfkill unblock failed: {result.stderr}")
+                if not usb_info:
+                    logger.warning("Could not find USB modem, falling back to rfkill")
+                    # Fallback to rfkill
+                    result = subprocess.run(
+                        ['sudo', 'rfkill', 'unblock', 'wwan'], 
+                        capture_output=True, text=True, timeout=10
+                    )
+                    if result.returncode == 0:
+                        logger.info("Cellular radio unblocked via rfkill")
+                        time.sleep(8)
+                        return True
+                    else:
+                        return False
+                
+                # Step 2: Re-enable USB device
+                usb_device_path = f"/sys/bus/usb/devices/{usb_info}"
+                auth_file = f"{usb_device_path}/authorized"
+                
+                result = subprocess.run(
+                    ['sudo', 'sh', '-c', f'echo 1 > {auth_file}'], 
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0:
+                    logger.info("USB modem powered up successfully")
+                    
+                    # Wait for USB re-enumeration and auto-connect
+                    logger.info("Waiting for USB re-enumeration and auto-connect...")
+                    time.sleep(10)
+                    return True
+                else:
+                    logger.error(f"USB power up failed: {result.stderr}")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"USB re-enablement failed: {e}")
                 return False
                 
-        except FileNotFoundError:
-            logger.error("rfkill not found")
-            return False
         except Exception as e:
-            logger.error(f"Error unblocking radio: {e}")
+            logger.error(f"Error powering up USB: {e}")
             return False
     
     def rotate_connection(self) -> Dict[str, Any]:
