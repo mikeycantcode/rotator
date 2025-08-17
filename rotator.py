@@ -114,6 +114,16 @@ class ModemRotator:
             )
             if result.returncode == 0:
                 logger.info("Modem disabled successfully")
+                
+                # NUCLEAR OPTION: Destroy the network interface completely
+                logger.info("Destroying network interface...")
+                try:
+                    subprocess.run(['sudo', 'ip', 'link', 'delete', 'wwan0'], 
+                                 capture_output=True, timeout=10)
+                    logger.info("Network interface destroyed")
+                except:
+                    logger.info("Interface destruction failed (might not exist)")
+                
                 return True
             else:
                 logger.error(f"mmcli disable failed: {result.stderr}")
