@@ -113,19 +113,22 @@ class ModemRotator:
                     ['lsusb'], capture_output=True, text=True, timeout=10
                 )
                 usb_info = None
+                vendor_product = None
+                
                 for line in result.stdout.split('\n'):
-                    if 'SIMCOM' in line or 'SIM7600' in line or 'QUALCOMM' in line:
-                        # Extract bus and device numbers
-                        parts = line.split()
-                        if len(parts) >= 4:
-                            bus = parts[1]
-                            device = parts[3].rstrip(':')
-                            usb_path = f"{bus}-{device}"
-                            usb_info = usb_path
-                            logger.info(f"Found modem at USB path: {usb_path}")
+                    line_upper = line.upper()
+                    if ('SIMCOM' in line_upper or 'SIM7600' in line_upper or 
+                        'QUALCOMM' in line_upper or 'SIMTECH' in line_upper or
+                        'OPTION' in line_upper):
+                        # Extract vendor:product ID
+                        # Format: Bus 001 Device 004: ID 1e0e:9001 Qualcomm / Option SimTech
+                        if ' ID ' in line:
+                            id_part = line.split(' ID ')[1].split()[0]  # Get "1e0e:9001"
+                            vendor_product = id_part
+                            logger.info(f"Found modem with ID: {vendor_product} - {line.strip()}")
                             break
                 
-                if not usb_info:
+                if not vendor_product:
                     logger.warning("Could not find USB modem, falling back to rfkill")
                     # Fallback to rfkill
                     result = subprocess.run(
@@ -138,9 +141,48 @@ class ModemRotator:
                     else:
                         return False
                 
+                # Find the actual USB device path using the vendor:product ID
+                find_result = subprocess.run(
+                    ['find', '/sys/bus/usb/devices', '-name', 'idVendor'], 
+                    capture_output=True, text=True, timeout=10
+                )
+                
+                vendor_id, product_id = vendor_product.split(':')
+                
+                for vendor_file in find_result.stdout.strip().split('\n'):
+                    if not vendor_file:
+                        continue
+                    try:
+                        with open(vendor_file, 'r') as f:
+                            file_vendor = f.read().strip()
+                        if file_vendor == vendor_id:
+                            # Check product ID too
+                            product_file = vendor_file.replace('idVendor', 'idProduct')
+                            with open(product_file, 'r') as f:
+                                file_product = f.read().strip()
+                            if file_product == product_id:
+                                usb_device_path = os.path.dirname(vendor_file)
+                                usb_info = usb_device_path
+                                logger.info(f"Found USB device at: {usb_device_path}")
+                                break
+                    except:
+                        continue
+                
+                if not usb_info:
+                    logger.warning("Could not find USB modem device path, falling back to rfkill")
+                    # Fallback to rfkill
+                    result = subprocess.run(
+                        ['sudo', 'rfkill', 'block', 'wwan'], 
+                        capture_output=True, text=True, timeout=10
+                    )
+                    if result.returncode == 0:
+                        logger.info("Cellular radio blocked via rfkill")
+                        return True
+                    else:
+                        return False
+                
                 # Step 2: Disable USB device
-                usb_device_path = f"/sys/bus/usb/devices/{usb_info}"
-                auth_file = f"{usb_device_path}/authorized"
+                auth_file = f"{usb_info}/authorized"
                 
                 result = subprocess.run(
                     ['sudo', 'sh', '-c', f'echo 0 > {auth_file}'], 
@@ -172,17 +214,21 @@ class ModemRotator:
                     ['lsusb'], capture_output=True, text=True, timeout=10
                 )
                 usb_info = None
+                vendor_product = None
+                
                 for line in result.stdout.split('\n'):
-                    if 'SIMCOM' in line or 'SIM7600' in line or 'QUALCOMM' in line:
-                        parts = line.split()
-                        if len(parts) >= 4:
-                            bus = parts[1]
-                            device = parts[3].rstrip(':')
-                            usb_path = f"{bus}-{device}"
-                            usb_info = usb_path
+                    line_upper = line.upper()
+                    if ('SIMCOM' in line_upper or 'SIM7600' in line_upper or 
+                        'QUALCOMM' in line_upper or 'SIMTECH' in line_upper or
+                        'OPTION' in line_upper):
+                        # Extract vendor:product ID
+                        if ' ID ' in line:
+                            id_part = line.split(' ID ')[1].split()[0]  # Get "1e0e:9001"
+                            vendor_product = id_part
+                            logger.info(f"Found modem with ID: {vendor_product} - {line.strip()}")
                             break
                 
-                if not usb_info:
+                if not vendor_product:
                     logger.warning("Could not find USB modem, falling back to rfkill")
                     # Fallback to rfkill
                     result = subprocess.run(
@@ -196,9 +242,49 @@ class ModemRotator:
                     else:
                         return False
                 
+                # Find the actual USB device path using the vendor:product ID
+                find_result = subprocess.run(
+                    ['find', '/sys/bus/usb/devices', '-name', 'idVendor'], 
+                    capture_output=True, text=True, timeout=10
+                )
+                
+                vendor_id, product_id = vendor_product.split(':')
+                
+                for vendor_file in find_result.stdout.strip().split('\n'):
+                    if not vendor_file:
+                        continue
+                    try:
+                        with open(vendor_file, 'r') as f:
+                            file_vendor = f.read().strip()
+                        if file_vendor == vendor_id:
+                            # Check product ID too
+                            product_file = vendor_file.replace('idVendor', 'idProduct')
+                            with open(product_file, 'r') as f:
+                                file_product = f.read().strip()
+                            if file_product == product_id:
+                                usb_device_path = os.path.dirname(vendor_file)
+                                usb_info = usb_device_path
+                                logger.info(f"Found USB device at: {usb_device_path}")
+                                break
+                    except:
+                        continue
+                
+                if not usb_info:
+                    logger.warning("Could not find USB modem device path, falling back to rfkill")
+                    # Fallback to rfkill
+                    result = subprocess.run(
+                        ['sudo', 'rfkill', 'unblock', 'wwan'], 
+                        capture_output=True, text=True, timeout=10
+                    )
+                    if result.returncode == 0:
+                        logger.info("Cellular radio unblocked via rfkill")
+                        time.sleep(8)
+                        return True
+                    else:
+                        return False
+                
                 # Step 2: Re-enable USB device
-                usb_device_path = f"/sys/bus/usb/devices/{usb_info}"
-                auth_file = f"{usb_device_path}/authorized"
+                auth_file = f"{usb_info}/authorized"
                 
                 result = subprocess.run(
                     ['sudo', 'sh', '-c', f'echo 1 > {auth_file}'], 
