@@ -57,41 +57,7 @@ class ModemRotator:
             vendor_id, product_id = vendor_product.split(':')
             logger.info(f"Searching for USB device with vendor:{vendor_id} product:{product_id}")
             
-            # Method 1: Try using lsusb -s to get specific device and find its path
-            lsusb_result = subprocess.run(['lsusb'], capture_output=True, text=True, timeout=10)
-            bus_device = None
-            
-            for line in lsusb_result.stdout.split('\n'):
-                if vendor_product in line:
-                    # Extract bus and device: "Bus 001 Device 004: ID 1e0e:9001"
-                    parts = line.split()
-                    if len(parts) >= 4:
-                        bus = parts[1]  # "001"
-                        device = parts[3].rstrip(':')  # "004"
-                        bus_device = f"{int(bus)}-{device}"
-                        logger.info(f"Found modem at bus-device: {bus_device}")
-                        break
-            
-            # Method 2: Try direct bus-device path format
-            if bus_device:
-                # Re-extract bus and device for path construction
-                bus_num = int(bus)
-                possible_paths = [
-                    f"/sys/bus/usb/devices/{bus_device}",
-                    f"/sys/bus/usb/devices/{bus_num}-{device}",
-                    f"/sys/bus/usb/devices/usb{bus_num}/{bus_device}"
-                ]
-                
-                for path in possible_paths:
-                    auth_file = f"{path}/authorized"
-                    if os.path.exists(auth_file):
-                        logger.info(f"Found USB device at: {path}")
-                        logger.info(f"Authorized file found: {auth_file}")
-                        return path
-                    else:
-                        logger.debug(f"Path not found: {path}")
-            
-            # Method 3: Search by vendor/product ID in sysfs
+            # Method 1: Search by vendor/product ID in sysfs (most reliable)
             find_result = subprocess.run(
                 ['find', '/sys/bus/usb/devices', '-name', 'idVendor'], 
                 capture_output=True, text=True, timeout=10
@@ -119,18 +85,49 @@ class ModemRotator:
                                 return usb_device_path
                             else:
                                 logger.warning(f"Authorized file not found: {auth_file}")
+                                # Try to find parent device if this is an interface
+                                parent_path = os.path.dirname(usb_device_path)
+                                parent_auth = f"{parent_path}/authorized"
+                                if os.path.exists(parent_auth):
+                                    logger.info(f"Found parent device authorized file: {parent_auth}")
+                                    return parent_path
                 except Exception as e:
                     logger.debug(f"Error checking USB device {vendor_file}: {e}")
                     continue
             
-            # Additional debug: list what USB devices we found
-            logger.info("Debug: Available USB devices in /sys/bus/usb/devices:")
+            # Method 2: Look for devices that match the pattern from debug listing
+            # Based on the listing, look for 1-1.2 pattern (hub device)
             try:
                 ls_result = subprocess.run(
                     ['ls', '-la', '/sys/bus/usb/devices/'], 
                     capture_output=True, text=True, timeout=5
                 )
+                logger.info("Debug: Available USB devices in /sys/bus/usb/devices:")
                 logger.info(f"USB devices listing:\n{ls_result.stdout}")
+                
+                # Look for device entries that could be the modem (non-interface entries)
+                for line in ls_result.stdout.split('\n'):
+                    if '->' in line and not ':' in line.split('->')[0]:
+                        # This is a device, not an interface (no colon)
+                        device_name = line.split()[8]  # Get the symlink name
+                        if device_name not in ['usb1', 'usb2'] and device_name.startswith('1-'):
+                            device_path = f"/sys/bus/usb/devices/{device_name}"
+                            auth_file = f"{device_path}/authorized"
+                            if os.path.exists(auth_file):
+                                # Check if this device has our vendor/product ID
+                                vendor_file = f"{device_path}/idVendor"
+                                product_file = f"{device_path}/idProduct"
+                                try:
+                                    if os.path.exists(vendor_file) and os.path.exists(product_file):
+                                        with open(vendor_file, 'r') as f:
+                                            dev_vendor = f.read().strip()
+                                        with open(product_file, 'r') as f:
+                                            dev_product = f.read().strip()
+                                        if dev_vendor == vendor_id and dev_product == product_id:
+                                            logger.info(f"Found modem device by scanning: {device_path}")
+                                            return device_path
+                                except:
+                                    continue
             except:
                 pass
                 
