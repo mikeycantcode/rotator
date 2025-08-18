@@ -50,6 +50,94 @@ class ModemRotator:
         self.lock = Lock()
         self.last_rotation = None
         self.rotation_count = 0
+    
+    def find_usb_modem_path(self, vendor_product: str) -> str:
+        """Find the USB device path for the modem in sysfs"""
+        try:
+            vendor_id, product_id = vendor_product.split(':')
+            logger.info(f"Searching for USB device with vendor:{vendor_id} product:{product_id}")
+            
+            # Method 1: Try using lsusb -s to get specific device and find its path
+            lsusb_result = subprocess.run(['lsusb'], capture_output=True, text=True, timeout=10)
+            bus_device = None
+            
+            for line in lsusb_result.stdout.split('\n'):
+                if vendor_product in line:
+                    # Extract bus and device: "Bus 001 Device 004: ID 1e0e:9001"
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        bus = parts[1]  # "001"
+                        device = parts[3].rstrip(':')  # "004"
+                        bus_device = f"{int(bus)}-{device}"
+                        logger.info(f"Found modem at bus-device: {bus_device}")
+                        break
+            
+            # Method 2: Try direct bus-device path format
+            if bus_device:
+                # Re-extract bus and device for path construction
+                bus_num = int(bus)
+                possible_paths = [
+                    f"/sys/bus/usb/devices/{bus_device}",
+                    f"/sys/bus/usb/devices/{bus_num}-{device}",
+                    f"/sys/bus/usb/devices/usb{bus_num}/{bus_device}"
+                ]
+                
+                for path in possible_paths:
+                    auth_file = f"{path}/authorized"
+                    if os.path.exists(auth_file):
+                        logger.info(f"Found USB device at: {path}")
+                        logger.info(f"Authorized file found: {auth_file}")
+                        return path
+                    else:
+                        logger.debug(f"Path not found: {path}")
+            
+            # Method 3: Search by vendor/product ID in sysfs
+            find_result = subprocess.run(
+                ['find', '/sys/bus/usb/devices', '-name', 'idVendor'], 
+                capture_output=True, text=True, timeout=10
+            )
+            
+            for vendor_file in find_result.stdout.strip().split('\n'):
+                if not vendor_file:
+                    continue
+                try:
+                    with open(vendor_file, 'r') as f:
+                        file_vendor = f.read().strip()
+                    if file_vendor == vendor_id:
+                        # Check product ID too
+                        product_file = vendor_file.replace('idVendor', 'idProduct')
+                        with open(product_file, 'r') as f:
+                            file_product = f.read().strip()
+                        if file_product == product_id:
+                            usb_device_path = os.path.dirname(vendor_file)
+                            logger.info(f"Found USB device at: {usb_device_path}")
+                            
+                            # Verify the authorized file exists and is writable
+                            auth_file = f"{usb_device_path}/authorized"
+                            if os.path.exists(auth_file):
+                                logger.info(f"Authorized file found: {auth_file}")
+                                return usb_device_path
+                            else:
+                                logger.warning(f"Authorized file not found: {auth_file}")
+                except Exception as e:
+                    logger.debug(f"Error checking USB device {vendor_file}: {e}")
+                    continue
+            
+            # Additional debug: list what USB devices we found
+            logger.info("Debug: Available USB devices in /sys/bus/usb/devices:")
+            try:
+                ls_result = subprocess.run(
+                    ['ls', '-la', '/sys/bus/usb/devices/'], 
+                    capture_output=True, text=True, timeout=5
+                )
+                logger.info(f"USB devices listing:\n{ls_result.stdout}")
+            except:
+                pass
+                
+            return None
+        except Exception as e:
+            logger.error(f"Error finding USB device path: {e}")
+            return None
         
     def get_connection_status(self) -> Dict[str, Any]:
         """Get current connection status"""
@@ -141,32 +229,8 @@ class ModemRotator:
                     else:
                         return False
                 
-                # Find the actual USB device path using the vendor:product ID
-                find_result = subprocess.run(
-                    ['find', '/sys/bus/usb/devices', '-name', 'idVendor'], 
-                    capture_output=True, text=True, timeout=10
-                )
-                
-                vendor_id, product_id = vendor_product.split(':')
-                
-                for vendor_file in find_result.stdout.strip().split('\n'):
-                    if not vendor_file:
-                        continue
-                    try:
-                        with open(vendor_file, 'r') as f:
-                            file_vendor = f.read().strip()
-                        if file_vendor == vendor_id:
-                            # Check product ID too
-                            product_file = vendor_file.replace('idVendor', 'idProduct')
-                            with open(product_file, 'r') as f:
-                                file_product = f.read().strip()
-                            if file_product == product_id:
-                                usb_device_path = os.path.dirname(vendor_file)
-                                usb_info = usb_device_path
-                                logger.info(f"Found USB device at: {usb_device_path}")
-                                break
-                    except:
-                        continue
+                # Find the USB device path
+                usb_info = self.find_usb_modem_path(vendor_product)
                 
                 if not usb_info:
                     logger.warning("Could not find USB modem device path, falling back to rfkill")
@@ -242,32 +306,8 @@ class ModemRotator:
                     else:
                         return False
                 
-                # Find the actual USB device path using the vendor:product ID
-                find_result = subprocess.run(
-                    ['find', '/sys/bus/usb/devices', '-name', 'idVendor'], 
-                    capture_output=True, text=True, timeout=10
-                )
-                
-                vendor_id, product_id = vendor_product.split(':')
-                
-                for vendor_file in find_result.stdout.strip().split('\n'):
-                    if not vendor_file:
-                        continue
-                    try:
-                        with open(vendor_file, 'r') as f:
-                            file_vendor = f.read().strip()
-                        if file_vendor == vendor_id:
-                            # Check product ID too
-                            product_file = vendor_file.replace('idVendor', 'idProduct')
-                            with open(product_file, 'r') as f:
-                                file_product = f.read().strip()
-                            if file_product == product_id:
-                                usb_device_path = os.path.dirname(vendor_file)
-                                usb_info = usb_device_path
-                                logger.info(f"Found USB device at: {usb_device_path}")
-                                break
-                    except:
-                        continue
+                # Find the USB device path
+                usb_info = self.find_usb_modem_path(vendor_product)
                 
                 if not usb_info:
                     logger.warning("Could not find USB modem device path, falling back to rfkill")
