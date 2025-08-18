@@ -57,11 +57,43 @@ class ModemRotator:
             vendor_id, product_id = vendor_product.split(':')
             logger.info(f"Searching for USB device with vendor:{vendor_id} product:{product_id}")
             
-            # Method 1: Search by vendor/product ID in sysfs (most reliable)
+            # Method 1: Direct check of the likely device paths first
+            # Based on the debug output, the modem is likely at 1-1.2
+            likely_devices = ['1-1.2', '1-1', '2-1']  # Common modem locations
+            
+            for device_name in likely_devices:
+                device_path = f"/sys/bus/usb/devices/{device_name}"
+                vendor_file = f"{device_path}/idVendor"
+                product_file = f"{device_path}/idProduct"
+                auth_file = f"{device_path}/authorized"
+                
+                try:
+                    if os.path.exists(vendor_file) and os.path.exists(product_file):
+                        with open(vendor_file, 'r') as f:
+                            dev_vendor = f.read().strip()
+                        with open(product_file, 'r') as f:
+                            dev_product = f.read().strip()
+                        
+                        logger.info(f"Checking device {device_name}: vendor={dev_vendor} product={dev_product}")
+                        
+                        if dev_vendor == vendor_id and dev_product == product_id:
+                            if os.path.exists(auth_file):
+                                logger.info(f"Found modem device at: {device_path}")
+                                logger.info(f"Authorized file found: {auth_file}")
+                                return device_path
+                            else:
+                                logger.warning(f"Device found but no authorized file: {auth_file}")
+                except Exception as e:
+                    logger.debug(f"Error checking device {device_name}: {e}")
+                    continue
+            
+            # Method 2: Search by vendor/product ID in sysfs (fallback)
             find_result = subprocess.run(
                 ['find', '/sys/bus/usb/devices', '-name', 'idVendor'], 
                 capture_output=True, text=True, timeout=10
             )
+            
+            logger.info(f"Find command found {len(find_result.stdout.strip().split())} vendor files")
             
             for vendor_file in find_result.stdout.strip().split('\n'):
                 if not vendor_file:
@@ -74,6 +106,7 @@ class ModemRotator:
                         product_file = vendor_file.replace('idVendor', 'idProduct')
                         with open(product_file, 'r') as f:
                             file_product = f.read().strip()
+                        logger.info(f"Found matching vendor in {vendor_file}: vendor={file_vendor} product={file_product}")
                         if file_product == product_id:
                             usb_device_path = os.path.dirname(vendor_file)
                             logger.info(f"Found USB device at: {usb_device_path}")
@@ -95,8 +128,7 @@ class ModemRotator:
                     logger.debug(f"Error checking USB device {vendor_file}: {e}")
                     continue
             
-            # Method 2: Look for devices that match the pattern from debug listing
-            # Based on the listing, look for 1-1.2 pattern (hub device)
+            # Method 3: Look for devices that match the pattern from debug listing
             try:
                 ls_result = subprocess.run(
                     ['ls', '-la', '/sys/bus/usb/devices/'], 
@@ -107,28 +139,36 @@ class ModemRotator:
                 
                 # Look for device entries that could be the modem (non-interface entries)
                 for line in ls_result.stdout.split('\n'):
-                    if '->' in line and not ':' in line.split('->')[0]:
+                    if '->' in line and ':' not in line:
                         # This is a device, not an interface (no colon)
-                        device_name = line.split()[8]  # Get the symlink name
-                        if device_name not in ['usb1', 'usb2'] and device_name.startswith('1-'):
-                            device_path = f"/sys/bus/usb/devices/{device_name}"
-                            auth_file = f"{device_path}/authorized"
-                            if os.path.exists(auth_file):
-                                # Check if this device has our vendor/product ID
+                        parts = line.split()
+                        if len(parts) >= 9:
+                            device_name = parts[8]  # Get the symlink name
+                            if device_name not in ['usb1', 'usb2', '.', '..'] and device_name.startswith('1-'):
+                                device_path = f"/sys/bus/usb/devices/{device_name}"
                                 vendor_file = f"{device_path}/idVendor"
                                 product_file = f"{device_path}/idProduct"
+                                auth_file = f"{device_path}/authorized"
+                                
+                                logger.info(f"Scanning device: {device_name}")
                                 try:
                                     if os.path.exists(vendor_file) and os.path.exists(product_file):
                                         with open(vendor_file, 'r') as f:
                                             dev_vendor = f.read().strip()
                                         with open(product_file, 'r') as f:
                                             dev_product = f.read().strip()
+                                        logger.info(f"Device {device_name}: vendor={dev_vendor} product={dev_product}")
                                         if dev_vendor == vendor_id and dev_product == product_id:
-                                            logger.info(f"Found modem device by scanning: {device_path}")
-                                            return device_path
-                                except:
+                                            if os.path.exists(auth_file):
+                                                logger.info(f"Found modem device by scanning: {device_path}")
+                                                return device_path
+                                            else:
+                                                logger.warning(f"Found modem but no authorized file: {auth_file}")
+                                except Exception as e:
+                                    logger.debug(f"Error scanning device {device_name}: {e}")
                                     continue
-            except:
+            except Exception as e:
+                logger.debug(f"Error in device scanning: {e}")
                 pass
                 
             return None
